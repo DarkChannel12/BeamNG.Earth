@@ -552,6 +552,12 @@ class Imagery:
             pass
         self.disk.forget(self._paths(src, z, x, y)[0])
 
+    def _get(self, src, url, kind):
+        """fetcher.get of a source's URL; a keyed source's account key in its header (imagery_regional.AUTH)."""
+        if src.headers:
+            return self.fetcher.get(url, kind=kind, headers=dict(src.headers))
+        return self.fetcher.get(url, kind=kind)
+
     def _download(self, src, z, x, y):
         """Raw tile bytes from the disk cache or the network; None for a (remembered) 404."""
         path, miss = self._paths(src, z, x, y)
@@ -566,7 +572,7 @@ class Imagery:
             return None
         kind = getattr(self._local, "kind", "demand")
         try:
-            r = self.fetcher.get(url, kind=kind, headers=dict(src.headers) or None)
+            r = self._get(src, url, kind)
         except netfetch.NotFound:               # outside the source's coverage
             os.makedirs(os.path.dirname(miss), exist_ok=True)
             open(miss, "wb").close()            # (re)written: its mtime starts the marker's TTL
@@ -616,7 +622,7 @@ class Imagery:
                 return None
             kind = getattr(self._local, "kind", "demand")
             try:
-                r = self.fetcher.get(url, kind=kind, headers=dict(src.headers) or None)
+                r = self._get(src, url, kind)
             except netfetch.NotFound:
                 os.makedirs(os.path.dirname(miss), exist_ok=True)
                 open(miss, "wb").close()
