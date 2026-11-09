@@ -6,7 +6,15 @@ inside the box: blank tiles) the next source fills in, down to NAIP, USGS and Se
 
 Kinds: XYZ caches ({z}/{x}/{y}; {ty} is the TMS row 2^z - 1 - y), and WMS / ArcGIS export services (export=2: one
 1024 px request per z15 parent, split into z17 tiles; lazy: fetched ahead of the player by warm(), as md6in).
+
+Keyed sources (KEYED): services whose terms need the player's own account key. They are opt-in: without the key in
+the environment they are not in REGIONAL at all (the chain, the credits and every cache key stay as before). The key
+goes in a request header (AUTH), never in the URL, so it is in no log line, error message or cache path. Their hosts
+take no pre-download (netfetch: offline_ok off, as every regional host): tiles come while playing and stay in the
+ordinary, evictable disk cache, never bulk-downloaded by a saved area (Esri's terms: not for offline export,
+docs/research/2026-10-10-imagery-sources-world.md).
 """
+import os
 
 WMS = ("SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&STYLES=&CRS=EPSG:3857&BBOX={bbox}&WIDTH={size}&HEIGHT={size}"
        "&FORMAT=image/jpeg")
@@ -25,7 +33,7 @@ PLACE = {
     "poland": "Poland", "czechia": "Czechia", "estonia": "Estonia", "flanders": "Flanders (Belgium)",
     "de_bayern": "Bavaria", "de_nrw": "North Rhine-Westphalia", "de_bw": "Baden-Wurttemberg",
     "de_nds": "Lower Saxony", "de_berlin": "Berlin", "de_hessen": "Hesse", "japan": "Japan",
-    "au_nsw": "New South Wales", "au_tas": "Tasmania", "ontario": "Ontario",
+    "au_nsw": "New South Wales", "au_tas": "Tasmania", "ontario": "Ontario", "esri_sochi": "Sochi",
 }
 
 # name: (url, attribution, (south, west, north, east), kind, leaf_off)
@@ -113,3 +121,34 @@ REGIONAL = {
                 "GEO_Imagery_Data_Service_2018to2022/ImageServer/exportImage?" + ARCGIS_EXPORT,
                 "Ontario GEO imagery (Open Government Licence - Ontario)", (41.7, -95.2, 56.9, -74.3), "export", False),
 }
+
+
+# name: (url, attribution, bounds, kind, leaf_off, environment variable with the key, header, value prefix)
+KEYED = {
+    # Greater Sochi (Lazarevskoye to Adler and Krasnaya Polyana / Rosa Khutor): Russia has no open orthophoto service,
+    # so it fell back to the 10 m Sentinel-2 mosaic. Esri World Imagery (~0.3-0.5 m there, z19) through ArcGIS Location
+    # Platform's basemap endpoint, with the player's own ArcGIS API key.
+    "esri_sochi": ("https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                   "Esri, Vantor, Earthstar Geographics, GIS User Community (Esri World Imagery)",
+                   (43.38, 39.05, 44.10, 40.45), "xyz", False, "BNGE_ESRI_KEY", "X-Esri-Authorization", "Bearer "),
+}
+# name: {header: value} of the keyed sources that are on
+AUTH = {}
+
+
+def _keyed(environ=None):
+    """The keyed sources whose key is set: {name: REGIONAL row}, {name: auth headers}."""
+    environ = os.environ if environ is None else environ
+    rows, auth = {}, {}
+    for name, (url, attr, bounds, kind, leaf, var, header, prefix) in KEYED.items():
+        key = (environ.get(var) or "").strip()
+        if key:
+            rows[name] = (url, attr, bounds, kind, leaf)
+            auth[name] = {header: prefix + key}
+    return rows, auth
+
+
+_rows, _auth = _keyed()
+REGIONAL.update(_rows)
+AUTH.update(_auth)
+del _rows, _auth

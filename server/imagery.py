@@ -122,6 +122,8 @@ class Source:
     # Flown leaf-off (bare trees, dormant grass): render() gives its vegetation the summer reference's colour
     # (season.leaf_on) when the Imagery's leaf_on is set
     leaf_off: bool = False
+    # Request headers ((name, value), ...): a keyed source's account key (imagery_regional.AUTH), never in the URL
+    headers: tuple = ()
 
 
 SOURCES = {
@@ -171,12 +173,13 @@ import imagery_regional  # noqa: E402
 # 4 minutes on Ohio's cache at its 6 requests/s, ~1,000 tiles for the 2-4 km tiles: z15 / z14).  z16: L2 and nearer.
 REGIONAL_XYZ_MIN_ZOOM = 16
 for _n, (_url, _attr, _bounds, _kind, _leaf) in imagery_regional.REGIONAL.items():
+    _hd = tuple(imagery_regional.AUTH.get(_n, {}).items())
     if _kind == "xyz":          # a tile cache: also on the nearer far rings (REGIONAL_XYZ_MIN_ZOOM+)
         SOURCES[_n] = Source(_n, _url, 17, _attr, probe_zooms=(12,), min_zoom=REGIONAL_XYZ_MIN_ZOOM, bounds=_bounds,
-                             leaf_off=_leaf)
+                             leaf_off=_leaf, headers=_hd)
     else:                       # a WMS / ArcGIS export: one 1024 px image per z15 parent, ahead of the player
         SOURCES[_n] = Source(_n, _url, 17, _attr, min_zoom=17, export=2, lazy=True, bounds=_bounds, nodata="white",
-                             leaf_off=_leaf)
+                             leaf_off=_leaf, headers=_hd)
 # British Columbia's lidar-programme orthophotos (bcortho.py: 10-15 cm, rendered from the Province's GeoTIFFs, not
 # fetched as images): after the regional services, like an export source
 SOURCES["bcortho"] = Source("bcortho", bcorthomod.URL, 17, bcorthomod.ATTRIBUTION, min_zoom=17, export=2, lazy=True,
@@ -563,7 +566,7 @@ class Imagery:
             return None
         kind = getattr(self._local, "kind", "demand")
         try:
-            r = self.fetcher.get(url, kind=kind)
+            r = self.fetcher.get(url, kind=kind, headers=dict(src.headers) or None)
         except netfetch.NotFound:               # outside the source's coverage
             os.makedirs(os.path.dirname(miss), exist_ok=True)
             open(miss, "wb").close()            # (re)written: its mtime starts the marker's TTL
@@ -613,7 +616,7 @@ class Imagery:
                 return None
             kind = getattr(self._local, "kind", "demand")
             try:
-                r = self.fetcher.get(url, kind=kind)
+                r = self.fetcher.get(url, kind=kind, headers=dict(src.headers) or None)
             except netfetch.NotFound:
                 os.makedirs(os.path.dirname(miss), exist_ok=True)
                 open(miss, "wb").close()

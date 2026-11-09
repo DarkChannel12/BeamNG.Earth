@@ -71,6 +71,11 @@ Baden-Wurttemberg (`owsproxy.lgl-bw.de`), Lower Saxony (`opendata.lgln.niedersac
 (`gdi.berlin.de`), Hesse (`www.gds-srv.hessen.de`), Japan (`cyberjapandata.gsi.go.jp`), New South Wales
 (`maps.six.nsw.gov.au`), Tasmania (`services.thelist.tas.gov.au`) and Ontario (`ws.geoservices.lrc.gov.on.ca`).
 
+Opt-in, with your own key: Sochi (`ibasemaps-api.arcgis.com`, Esri World Imagery, about 0.3-0.5 m per pixel, used
+only inside Greater Sochi). Off unless the environment variable `BNGE_ESRI_KEY` holds your ArcGIS Location Platform
+API key; the key is sent in a request header, never in an address or a log. Its photos come while you play and stay
+in the ordinary disk cache; saved areas do not download them ahead (Esri's terms are not for offline export).
+
 ## Land cover, trees and water
 
 | Source | Address | What it builds | If it does not answer | Status line |
