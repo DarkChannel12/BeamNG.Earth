@@ -767,7 +767,7 @@ def plan(ring, attrs, neighbours=0, lat=None, lon=None, look=None, town=False, d
         facade, band, plain = FACADE_TINTS[3], BAND_PANEL, False
     windows = True
     if not (shed or barn or row or house or terminal or garage or church) and nf <= 2 and roof == "flat" \
-            and (area >= BIG_BOX_M2 or industrial) \
+            and (area >= BIG_BOX_M2 or industrial) and not attrs.get("edited_facade") \
             and cls not in HOUSE_CLASSES and cls != "apartments":
         kind = METALWALL if industrial else PANEL
         wall = f"{kind}|{int(_hash01(seed, 'wc') * len(WALL_TINTS[kind]))}"
@@ -2611,14 +2611,19 @@ def tile_buildings(frame, x0, y0, x1, y1, layers, elev, water=None, part_layers=
     up_all = np.full(len(allr), np.nan)
     if ok.any():
         up_all[ok] = np.asarray(frame.geodetic_to_enu(la_all[ok], lo_all[ok], g_all[ok])[2], np.float64)
+    import sochiedits           # (the Sochi hand edits: height, roof, facade, or not built)
     out = []
     for k, (ring, at, sh, look, mh) in enumerate(zip(rings, attrs, shared, looks, mins)):
+        i0, i1 = (ends[k - 1] if k else 0), ends[k]
+        if look is None:
+            at = sochiedits.building_attrs(at, la_all[i0:i1], lo_all[i0:i1])
+            if at is None:
+                continue
         if mh > 0.5 and at.get("height") is not None and np.isfinite(at["height"]) and look is None:
             at = dict(at, height=max(2.5, float(at["height"]) - mh))     # a building's own height range
         spec = plan(ring, at, int(sh) if look is None else 0, clat, clon, look, town, dense, west_town, alpine)
         spec.min_h = mh
         spec.portal = bool(at.get("portal"))
-        i0, i1 = (ends[k - 1] if k else 0), ends[k]
         if not ok[i0:i1].all():
             continue
         g = up_all[i0:i1].copy()

@@ -125,5 +125,44 @@ class AreasTest(EditsCase):
         self.assertIs(sochiedits.paint_areas(idx, lat, lon), idx)
 
 
+MALL_LAT = np.array([43.6045, 43.6055, 43.6055, 43.6045])     # a square footprint around (43.6050, 39.7322)
+MALL_LON = np.array([39.7315, 39.7315, 39.7330, 39.7330])
+
+
+class BuildingsTest(EditsCase):
+    def test_point_inside_the_footprint(self):
+        self.write({"buildings": [{"at": [43.6050, 39.7322], "height": 24, "levels": 4, "facade_material": "glass",
+                                   "facade_color": "#d8dde0", "roof": "flat", "class": "retail"}]})
+        at = {"class": "commercial", "seed_id": "x"}
+        got = sochiedits.building_attrs(at, MALL_LAT, MALL_LON)
+        self.assertEqual((got["height"], got["num_floors"], got["facade_material"], got["roof_shape"], got["class"]),
+                         (24.0, 4, "glass", "flat", "retail"))
+        self.assertTrue(got["edited_facade"])
+        self.assertEqual(at, {"class": "commercial", "seed_id": "x"}, "the input is not changed")
+        other = sochiedits.building_attrs(at, MALL_LAT + 0.01, MALL_LON)
+        self.assertIs(other, at, "a building the point is not in")
+
+    def test_by_name_and_drop(self):
+        self.write({"buildings": [{"name": "МореМолл", "drop": True}]})
+        self.assertIsNone(sochiedits.building_attrs({"name": "Моремолл"}, MALL_LAT, MALL_LON))
+        moscow = sochiedits.building_attrs({"name": "МореМолл"}, MALL_LAT + 12, MALL_LON - 2)
+        self.assertEqual(moscow, {"name": "МореМолл"}, "outside the box: as it is")
+
+    def test_bad_building_edits_are_refused(self):
+        for b in ({"height": 10}, {"at": [43.6, 39.7], "roof": "banana"}, {"at": [43.6, 39.7], "facade_color": "zz"},
+                  {"at": [55.7, 37.6], "height": 10}, {"at": [43.6, 39.7], "levels": 0}):
+            self.write({"buildings": [b]})
+            self.assertEqual(sochiedits.load()["buildings"], [], b)
+
+    def test_glass_keeps_its_windows_on_a_big_box(self):
+        import buildings
+        ring = np.array([[0, 0], [120, 0], [120, 80], [0, 80]], np.float64)
+        plain = buildings.plan(ring, {"class": "commercial", "seed_id": "m"}, 0, 43.6, 39.73)
+        glass = buildings.plan(ring, {"class": "commercial", "seed_id": "m", "facade_material": "glass",
+                                      "edited_facade": True, "num_floors": 2, "roof_shape": "flat"}, 0, 43.6, 39.73)
+        self.assertNotEqual(plain.facade, glass.facade)
+        self.assertTrue(str(glass.facade).startswith(buildings.OFFICE))
+
+
 if __name__ == "__main__":
     unittest.main()

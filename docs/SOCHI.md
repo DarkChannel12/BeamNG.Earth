@@ -69,6 +69,9 @@ Sochi box only, every time it builds there.
 - Roads, by `"name"` (as the status bar shows it) or `"way"` (OSM way id), optionally `"near": [lat, lon, m]`:
   `width`, `lanes`, `surface` (asphalt / concrete / cobble / gravel / dirt), `sidewalks` (both / left / right /
   none), `sidewalk_width`, `drop`.
+- Buildings, by `"at": [lat, lon]` (a point inside the footprint) or `"name"`: `height`, `levels`, `roof`,
+  `facade_material` (glass / brick / concrete / plaster / metal / stone / wood), `facade_color`, `roof_material`,
+  `roof_color`, `class`, `drop`. A glass facade keeps its windows on a big flat box (otherwise drawn windowless).
 - Areas: `{"ground": "cobble", "polygon": [[lat, lon], ...]}` (asphalt / cobble / grass / lawn / dirt / gravel /
   sand): the tyres' ground model and a flat tint on the ground photo (no tiled texture: the ground's look is the photo).
 - Workflow: the player shows the place (screenshot + the coordinates over the minimap / the street name), the edit is

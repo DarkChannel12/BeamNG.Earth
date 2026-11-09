@@ -13,6 +13,10 @@ EDITS_FILE (server/sochi_edits.json; BNGE_SOCHI_EDITS names another one):
         {"way": 123456789, "surface": "cobble"},
         {"name": "Курортный проспект", "near": [43.5965, 39.7350, 300], "lanes": 4}
      ],
+     "buildings": [
+        {"at": [43.6050, 39.7322], "height": 24, "levels": 4, "facade_material": "glass", "facade_color": "#d8dde0",
+         "roof": "flat", "note": "MoreMall"}
+     ],
      "areas": [
         {"ground": "cobble", "polygon": [[43.6041, 39.7311], [43.6046, 39.7318], [43.6040, 39.7322]],
          "note": "the square in front of MoreMall"}
@@ -26,6 +30,10 @@ aside), optionally only within "near": [lat, lon, radius m] of a point. Fields (
   sidewalks       both | left | right | none (left / right of the road's drawing direction)
   sidewalk_width  m
   drop            true: the road is not drawn at all
+Buildings are picked by a point inside the footprint ("at": [lat, lon]) or by name; fields: height (m), levels,
+roof (flat | gabled | hipped | pyramidal | skillion | dome | mansard), roof_color / facade_color ("#rrggbb" or a colour
+name), facade_material (glass | brick | concrete | plaster | metal | stone | wood), roof_material (metal | tile | slate |
+shingle | concrete | glass | copper), class (e.g. retail, commercial, apartments: the look's kind), drop (not built).
 Areas are polygons of [lat, lon] points painted with "ground": asphalt | cobble | grass | lawn | dirt | gravel | sand,
 both in the tyres' ground model and in the ground photo (a flat tint: the photo is what the ground looks like).
 
@@ -54,6 +62,11 @@ SURFACES = {"asphalt": ("paved", None), "concrete": ("paved", "concrete"), "cobb
 SIDEWALKS = {"both": (1, -1), "left": (1,), "right": (-1,), "none": ()}
 ROAD_KEYS = {"name", "way", "near", "width", "lanes", "surface", "sidewalks", "sidewalk_width", "drop", "note"}
 AREA_KEYS = {"ground", "polygon", "note"}
+BUILDING_KEYS = {"at", "name", "height", "levels", "roof", "roof_color", "roof_material", "facade_color",
+                 "facade_material", "class", "drop", "note"}
+ROOFS = {"flat", "gabled", "hipped", "pyramidal", "skillion", "dome", "mansard"}
+FACADE_MATERIALS = {"glass", "brick", "concrete", "plaster", "metal", "stone", "wood"}
+ROOF_MATERIALS = {"metal", "tile", "slate", "shingle", "concrete", "glass", "copper"}
 # ground -> (surface.MATERIALS name, the photo's tint (r, g, b, opacity))
 GROUNDS = {
     "asphalt": ("bngEarthGroundAsphalt", (95, 95, 94, 1.0)),
@@ -72,8 +85,10 @@ _state = {}
 def _parse(doc):
     """(roads, areas) from the file's JSON, checked; raises ValueError with what is wrong."""
     if not isinstance(doc, dict):
-        raise ValueError("the file must be a JSON object with 'roads' and / or 'areas'")
-    roads, areas = [], []
+        raise ValueError("the file must be a JSON object with 'roads', 'buildings' and / or 'areas'")
+    roads, areas, buildings = [], [], []
+    for k, b in enumerate(doc.get("buildings") or []):
+        buildings.append(_parse_building(b, f"buildings[{k}]"))
     for k, r in enumerate(doc.get("roads") or []):
         where = f"roads[{k}]"
         if not isinstance(r, dict):
@@ -126,7 +141,57 @@ def _parse(doc):
         if not ((pts[:, 0] >= S) & (pts[:, 0] <= N) & (pts[:, 1] >= W) & (pts[:, 1] <= E)).all():
             raise ValueError(f"{where}: polygon leaves the Sochi box")
         areas.append({"ground": a["ground"], "lat": pts[:, 0].copy(), "lon": pts[:, 1].copy()})
-    return roads, areas
+    return roads, areas, buildings
+
+
+def _parse_building(b, where):
+    if not isinstance(b, dict):
+        raise ValueError(f"{where}: not an object")
+    bad = set(b) - BUILDING_KEYS
+    if bad:
+        raise ValueError(f"{where}: unknown fields {sorted(bad)}")
+    if ("at" in b) == ("name" in b):
+        raise ValueError(f"{where}: give either 'at' ([lat, lon] inside the building) or 'name'")
+    e = {"at": None, "name": None, "attrs": {}, "drop": bool(b.get("drop", False))}
+    if "at" in b:
+        la, lo = (float(v) for v in b["at"])
+        S, W, N, E = BOUNDS
+        if not (S <= la <= N and W <= lo <= E):
+            raise ValueError(f"{where}: 'at' is outside the Sochi box")
+        e["at"] = (la, lo)
+    else:
+        e["name"] = str(b["name"]).strip().casefold()
+    at = e["attrs"]
+    if "height" in b:
+        at["height"] = float(b["height"])
+        if not 2.0 <= at["height"] <= 400.0:
+            raise ValueError(f"{where}: height {at['height']} m")
+    if "levels" in b:
+        at["num_floors"] = int(b["levels"])
+        if not 1 <= at["num_floors"] <= 120:
+            raise ValueError(f"{where}: levels {at['num_floors']}")
+    if "roof" in b:
+        if b["roof"] not in ROOFS:
+            raise ValueError(f"{where}: roof must be one of {sorted(ROOFS)}")
+        at["roof_shape"] = b["roof"]
+    import buildings
+    for key in ("roof_color", "facade_color"):
+        if key in b:
+            if buildings.parse_color(str(b[key])) is None:
+                raise ValueError(f"{where}: {key} {b[key]!r} is not a colour ('#rrggbb' or a name)")
+            at[key] = str(b[key])
+    if "facade_material" in b:
+        if b["facade_material"] not in FACADE_MATERIALS:
+            raise ValueError(f"{where}: facade_material must be one of {sorted(FACADE_MATERIALS)}")
+        at["facade_material"] = b["facade_material"]
+        at["edited_facade"] = True
+    if "roof_material" in b:
+        if b["roof_material"] not in ROOF_MATERIALS:
+            raise ValueError(f"{where}: roof_material must be one of {sorted(ROOF_MATERIALS)}")
+        at["roof_material"] = b["roof_material"]
+    if "class" in b:
+        at["class"] = str(b["class"])
+    return e
 
 
 def load(path=None):
@@ -136,7 +201,7 @@ def load(path=None):
         got = _state.get(path)
         if got is not None:
             return got
-        got = {"roads": [], "areas": [], "fingerprint": ""}
+        got = {"roads": [], "areas": [], "buildings": [], "fingerprint": ""}
         try:
             with open(path, "rb") as f:
                 raw = f.read()
@@ -147,10 +212,11 @@ def load(path=None):
             raw = None
         if raw is not None and raw.strip():
             try:
-                roads, areas = _parse(json.loads(raw.decode("utf-8-sig")))
-                got = {"roads": roads, "areas": areas,
-                       "fingerprint": hashlib.sha1(raw).hexdigest()[:16] if roads or areas else ""}
-                log.info("sochi edits: %d road and %d area edits from %s", len(roads), len(areas), path)
+                roads, areas, buildings = _parse(json.loads(raw.decode("utf-8-sig")))
+                got = {"roads": roads, "areas": areas, "buildings": buildings,
+                       "fingerprint": hashlib.sha1(raw).hexdigest()[:16] if roads or areas or buildings else ""}
+                log.info("sochi edits: %d road, %d building and %d area edits from %s", len(roads), len(buildings),
+                         len(areas), path)
             except (ValueError, TypeError, KeyError, UnicodeDecodeError) as e:
                 log.warning("sochi edits: %s is not usable: %s (no edits applied)", path, e)
         _state[path] = got
@@ -239,6 +305,48 @@ def apply_roads(feats, specs):
             if out[i] is None:
                 break
     return specs if out is None else out
+
+
+# --- buildings -----------------------------------------------------------------------------------------------------
+def _point_in(lat, lon, pla, plo):
+    """Point (pla, plo) inside the ring (lat, lon arrays; even-odd)."""
+    inside = False
+    n = len(lat)
+    j = n - 1
+    for i in range(n):
+        if (lat[i] > pla) != (lat[j] > pla):
+            x = lon[i] + (pla - lat[i]) * (lon[j] - lon[i]) / (lat[j] - lat[i])
+            if plo < x:
+                inside = not inside
+        j = i
+    return inside
+
+
+def building_attrs(attrs, lat, lon):
+    """A building's attributes (buildings.plan's dict) with the building edits applied (lat / lon: its footprint's
+    corners): a new dict, the same one when none applies, None when it is dropped."""
+    edits = load()["buildings"]
+    if not edits or len(lat) == 0:
+        return attrs
+    lat = np.asarray(lat, np.float64)
+    lon = np.asarray(lon, np.float64)
+    if not _in_box(lon, lat).any():
+        return attrs
+    nm = str(attrs.get("name") or "").strip().casefold()
+    out = attrs
+    for e in edits:
+        if e["name"] is not None:
+            if e["name"] != nm:
+                continue
+        else:
+            pla, plo = e["at"]
+            if not (lat.min() <= pla <= lat.max() and lon.min() <= plo <= lon.max()) or \
+                    not _point_in(lat, lon, pla, plo):
+                continue
+        if e["drop"]:
+            return None
+        out = dict(out, **e["attrs"])
+    return out
 
 
 # --- areas ---------------------------------------------------------------------------------------------------------
