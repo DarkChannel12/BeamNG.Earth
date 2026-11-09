@@ -9,7 +9,8 @@ Kinds: XYZ caches ({z}/{x}/{y}; {ty} is the TMS row 2^z - 1 - y), and WMS / ArcG
 
 Keyed sources (KEYED): services whose terms need the player's own account key. They are opt-in: without the key in
 the environment they are not in REGIONAL at all (the chain, the credits and every cache key stay as before). The key
-goes in a request header (AUTH), never in the URL, so it is in no log line, error message or cache path. Their hosts
+goes in a request header (AUTH) where the service takes one, else in a URL parameter (QUERY) added only when the
+request is made and cut out of every log line and error (netfetch.redact); never in a cache path. Their hosts
 take no pre-download (netfetch: offline_ok off, as every regional host): tiles come while playing and stay in the
 ordinary, evictable disk cache, never bulk-downloaded by a saved area (Esri's terms: not for offline export,
 docs/research/2026-10-10-imagery-sources-world.md).
@@ -33,7 +34,7 @@ PLACE = {
     "poland": "Poland", "czechia": "Czechia", "estonia": "Estonia", "flanders": "Flanders (Belgium)",
     "de_bayern": "Bavaria", "de_nrw": "North Rhine-Westphalia", "de_bw": "Baden-Wurttemberg",
     "de_nds": "Lower Saxony", "de_berlin": "Berlin", "de_hessen": "Hesse", "japan": "Japan",
-    "au_nsw": "New South Wales", "au_tas": "Tasmania", "ontario": "Ontario", "esri_sochi": "Sochi",
+    "au_nsw": "New South Wales", "au_tas": "Tasmania", "ontario": "Ontario", "esri_sochi": "Sochi", "maptiler_sochi": "Sochi",
 }
 
 # name: (url, attribution, (south, west, north, east), kind, leaf_off)
@@ -123,32 +124,62 @@ REGIONAL = {
 }
 
 
-# name: (url, attribution, bounds, kind, leaf_off, environment variable with the key, header, value prefix)
+# name: (url, attribution, bounds, kind, leaf_off, environment variable with the key, where the key goes, its name,
+#        value prefix, the host's hard daily request cap or None)
+#   where: "header" (the request header `name`, never in the URL) or "query" (the URL parameter `name`, added only
+#   when the request is made: imagery.Imagery._get; netfetch.redact takes it out of every log line and error)
 KEYED = {
     # Greater Sochi (Lazarevskoye to Adler and Krasnaya Polyana / Rosa Khutor): Russia has no open orthophoto service,
     # so it fell back to the 10 m Sentinel-2 mosaic. Esri World Imagery (~0.3-0.5 m there, z19) through ArcGIS Location
     # Platform's basemap endpoint, with the player's own ArcGIS API key.
     "esri_sochi": ("https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                    "Esri, Vantor, Earthstar Geographics, GIS User Community (Esri World Imagery)",
-                   (43.38, 39.05, 44.10, 40.45), "xyz", False, "BNGE_ESRI_KEY", "X-Esri-Authorization", "Bearer "),
+                   SOCHI := (43.38, 39.05, 44.10, 40.45), "xyz", False, "BNGE_ESRI_KEY", "header",
+                   "X-Esri-Authorization", "Bearer ", None),
+    # The same box from MapTiler Cloud's satellite map (~0.4-0.5 m at the Sochi sea port, checked 2026-11-09), with
+    # the player's own MapTiler key (the free plan: personal, non-commercial). Its terms: a temporary personal cache
+    # for a single end-user, no bulk download (so no saved-area download, as every keyed source), the attribution on
+    # screen. maps/satellite/256: the imagery alone (no labels) in 256 px tiles. Its key only works as ?key=.
+    "maptiler_sochi": ("https://api.maptiler.com/maps/satellite/256/{z}/{x}/{y}.jpg",
+                       "(c) MapTiler (c) OpenStreetMap contributors (MapTiler Satellite)",
+                       SOCHI, "xyz", False, "BNGE_MAPTILER_KEY", "query", "key", "", 3000),
 }
-# name: {header: value} of the keyed sources that are on
+# name: {header: value} / ((parameter, value),) of the keyed sources that are on; the keys themselves (netfetch.redact);
+# host: hard daily request cap (netfetch: the free plans' monthly quotas)
 AUTH = {}
+QUERY = {}
+SECRETS = set()
+DAILY_HARD = {}
 
 
 def _keyed(environ=None):
-    """The keyed sources whose key is set: {name: REGIONAL row}, {name: auth headers}."""
+    """The keyed sources whose key is set: {name: REGIONAL row}, {name: headers}, {name: query}, {keys},
+    {host: daily cap}."""
+    import urllib.parse
     environ = os.environ if environ is None else environ
-    rows, auth = {}, {}
-    for name, (url, attr, bounds, kind, leaf, var, header, prefix) in KEYED.items():
+    rows, auth, query, secrets, hard = {}, {}, {}, set(), {}
+    for name, (url, attr, bounds, kind, leaf, var, where, pname, prefix, cap) in KEYED.items():
         key = (environ.get(var) or "").strip()
-        if key:
-            rows[name] = (url, attr, bounds, kind, leaf)
-            auth[name] = {header: prefix + key}
-    return rows, auth
+        if not key:
+            continue
+        rows[name] = (url, attr, bounds, kind, leaf)
+        if where == "header":
+            auth[name] = {pname: prefix + key}
+        else:
+            query[name] = ((pname, prefix + key),)
+        secrets.add(key)
+        if cap:
+            hard[urllib.parse.urlsplit(url).hostname] = cap
+    return rows, auth, query, secrets, hard
 
 
-_rows, _auth = _keyed()
-REGIONAL.update(_rows)
-AUTH.update(_auth)
-del _rows, _auth
+def _apply():
+    rows, auth, query, secrets, hard = _keyed()
+    REGIONAL.update(rows)
+    AUTH.update(auth)
+    QUERY.update(query)
+    SECRETS.update(secrets)
+    DAILY_HARD.update(hard)
+
+
+_apply()

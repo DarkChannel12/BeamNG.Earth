@@ -124,6 +124,9 @@ class Source:
     leaf_off: bool = False
     # Request headers ((name, value), ...): a keyed source's account key (imagery_regional.AUTH), never in the URL
     headers: tuple = ()
+    # URL parameters ((name, value), ...) added when the request is made (a key a service only takes in the URL:
+    # imagery_regional.QUERY); not in .url, so not in the messages built from it
+    query: tuple = ()
 
 
 SOURCES = {
@@ -174,12 +177,13 @@ import imagery_regional  # noqa: E402
 REGIONAL_XYZ_MIN_ZOOM = 16
 for _n, (_url, _attr, _bounds, _kind, _leaf) in imagery_regional.REGIONAL.items():
     _hd = tuple(imagery_regional.AUTH.get(_n, {}).items())
+    _q = imagery_regional.QUERY.get(_n, ())
     if _kind == "xyz":          # a tile cache: also on the nearer far rings (REGIONAL_XYZ_MIN_ZOOM+)
         SOURCES[_n] = Source(_n, _url, 17, _attr, probe_zooms=(12,), min_zoom=REGIONAL_XYZ_MIN_ZOOM, bounds=_bounds,
-                             leaf_off=_leaf, headers=_hd)
+                             leaf_off=_leaf, headers=_hd, query=_q)
     else:                       # a WMS / ArcGIS export: one 1024 px image per z15 parent, ahead of the player
         SOURCES[_n] = Source(_n, _url, 17, _attr, min_zoom=17, export=2, lazy=True, bounds=_bounds, nodata="white",
-                             leaf_off=_leaf, headers=_hd)
+                             leaf_off=_leaf, headers=_hd, query=_q)
 # British Columbia's lidar-programme orthophotos (bcortho.py: 10-15 cm, rendered from the Province's GeoTIFFs, not
 # fetched as images): after the regional services, like an export source
 SOURCES["bcortho"] = Source("bcortho", bcorthomod.URL, 17, bcorthomod.ATTRIBUTION, min_zoom=17, export=2, lazy=True,
@@ -553,7 +557,11 @@ class Imagery:
         self.disk.forget(self._paths(src, z, x, y)[0])
 
     def _get(self, src, url, kind):
-        """fetcher.get of a source's URL; a keyed source's account key in its header (imagery_regional.AUTH)."""
+        """fetcher.get of a source's URL; a keyed source's account key in its header (imagery_regional.AUTH) or URL
+        parameter (imagery_regional.QUERY: added here, so the callers' messages never hold it)."""
+        if src.query:
+            import urllib.parse
+            url += ("&" if "?" in url else "?") + urllib.parse.urlencode(src.query)
         if src.headers:
             return self.fetcher.get(url, kind=kind, headers=dict(src.headers))
         return self.fetcher.get(url, kind=kind)

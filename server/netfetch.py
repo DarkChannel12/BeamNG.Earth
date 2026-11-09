@@ -89,10 +89,22 @@ TEST_LATENCY_S = float(os.environ.get("BNGE_NET_LATENCY_MS") or 0) / 1000.0
 NETLOG = os.environ.get("BNGE_NETLOG")      # debugging: every network request, one line each, from every process
 
 
+def redact(text):
+    """text with the players' account keys (imagery_regional.SECRETS: a keyed source's key, some only taken in the
+    URL) replaced by "<key>": for every log line and error message that may hold a URL."""
+    if not text:
+        return text
+    import imagery_regional
+    for k in imagery_regional.SECRETS:
+        if k in text:
+            text = text.replace(k, "<key>")
+    return text
+
+
 def _netlog(url, headers, status, body):
     """Append "<unix time> <pid> <status> <bytes> <url> <range>" to the BNGE_NETLOG file (one write per line:
     whole lines from every process)."""
-    line = (f"{time.time():.3f} {os.getpid()} {status} {len(body or b'')} {url} "
+    line = (f"{time.time():.3f} {os.getpid()} {status} {len(body or b'')} {redact(url)} "
             f"{(headers or {}).get('Range', '-')}\n")
     try:
         fd = os.open(NETLOG, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -286,9 +298,10 @@ def _regional_policies():
         host = urllib.parse.urlsplit(url).hostname
         if host in POLICIES or host in out:
             continue
+        hard = imagery_regional.DAILY_HARD.get(host)    # a keyed source's free plan: its monthly quota
         if kind == "xyz":
-            out[host] = HostPolicy(rate=6.0, burst=20.0, max_conc=4, daily_budget=20000, allow_prefetch=True,
-                                   miss_ttl=30 * DAY, timeout=20.0, optional=True, **TILE_HOST)
+            out[host] = HostPolicy(rate=6.0, burst=20.0, max_conc=4, daily_budget=hard or 20000, allow_prefetch=True,
+                                   daily_hard=hard, miss_ttl=30 * DAY, timeout=20.0, optional=True, **TILE_HOST)
         else:
             out[host] = HostPolicy(rate=1.0, burst=4.0, max_conc=1, daily_budget=4000, allow_prefetch=True,
                                    miss_ttl=30 * DAY, binary=True, timeout=30.0, max_attempts=2, base_delay=2.0,
@@ -367,6 +380,7 @@ class FetchError(IOError):
     """A request that did not give data. retry_after: s before asking this host again helps."""
 
     def __init__(self, msg, url=None, host=None, retry_after=0.0, status=None):
+        msg, url = redact(msg), redact(url)
         super().__init__(msg)
         self.url, self.host, self.retry_after, self.status = url, host, retry_after, status
         # (no data there, a dropped prefetch: as it should be; a saved area's download ahead: no build waited on it)
@@ -726,7 +740,7 @@ class HttpsTransport:
         if proxy is None:
             key = (u.scheme, u.netloc, None)
         else:
-            log.debug("net: %s -> proxy %s:%d", url, proxy[0], proxy[1])
+            log.debug("net: %s -> proxy %s:%d", redact(url), proxy[0], proxy[1])
             key = (u.scheme, u.netloc, proxy[0], proxy[1])
         while True:
             conn = conns.get(key)

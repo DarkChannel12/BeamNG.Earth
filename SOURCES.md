@@ -71,10 +71,16 @@ Baden-Wurttemberg (`owsproxy.lgl-bw.de`), Lower Saxony (`opendata.lgln.niedersac
 (`gdi.berlin.de`), Hesse (`www.gds-srv.hessen.de`), Japan (`cyberjapandata.gsi.go.jp`), New South Wales
 (`maps.six.nsw.gov.au`), Tasmania (`services.thelist.tas.gov.au`) and Ontario (`ws.geoservices.lrc.gov.on.ca`).
 
-Opt-in, with your own key: Sochi (`ibasemaps-api.arcgis.com`, Esri World Imagery, about 0.3-0.5 m per pixel, used
-only inside Greater Sochi). Off unless the environment variable `BNGE_ESRI_KEY` holds your ArcGIS Location Platform
-API key; the key is sent in a request header, never in an address or a log. Its photos come while you play and stay
-in the ordinary disk cache; saved areas do not download them ahead (Esri's terms are not for offline export).
+Opt-in, with your own key, used only inside Greater Sochi (about 0.3-0.5 m per pixel there):
+- MapTiler Satellite (`api.maptiler.com`): off unless the environment variable `BNGE_MAPTILER_KEY` holds your
+  MapTiler Cloud key (the free plan is for personal, non-commercial use). At most 3,000 requests a day, to stay
+  inside the free plan's monthly quota.
+- Esri World Imagery (`ibasemaps-api.arcgis.com`): off unless `BNGE_ESRI_KEY` holds your ArcGIS Location Platform
+  API key.
+
+Keys are never written to a log or an error message. Their photos come while you play and stay in the ordinary disk
+cache (a temporary personal cache); saved areas do not download them ahead (neither service allows bulk or offline
+download). With both keys set, Esri comes first.
 
 ## Land cover, trees and water
 
