@@ -112,15 +112,16 @@ class DemBlendTest(unittest.TestCase):
         dm._ground12 = ground
         return dm
 
-    def test_inside_is_fabdem_alone(self):
+    def test_inside_is_the_lower_ground(self):
         with tempfile.TemporaryDirectory() as d:
             dm = self.make(d)
             _, x, y = tile_of(*MOREMALL, 12)
             a = np.zeros((demmod.TILE, demmod.TILE), np.float32)
-            got = dm._bare12(x, y, a)
             want, _ = dm.fabdem.tile(12, x, y)
-            np.testing.assert_array_equal(got, want)
-            self.assertEqual(dm.ground_calls, [], "no ground filter (nor its 8 neighbours) needed inside")
+            np.testing.assert_array_equal(dm._bare12(x, y, a), np.minimum(want, -50.0))
+            dm._ground12 = lambda x_, y_, a_: np.full((demmod.TILE, demmod.TILE), 1e5, np.float32)
+            np.testing.assert_allclose(dm._bare12(x, y, a), want, atol=0.02,
+                                       err_msg="FABDEM where the filtered model is higher")
 
     def test_outside_is_the_ground_filter(self):
         with tempfile.TemporaryDirectory() as d:
@@ -137,8 +138,6 @@ class DemBlendTest(unittest.TestCase):
             got = dm._bare12(x, y, np.zeros((demmod.TILE, demmod.TILE), np.float32))
             lat, lon = fabdem.tile_lat_lon(12, x, y)
             self.assertTrue(np.all(got[lon < W] == -50.0), "outside the box: the filtered model")
-            inside = got[lon > W + 0.05]
-            self.assertTrue(np.all(inside > 30000), "past the feather: FABDEM")
             self.assertEqual(len(dm.ground_calls), 1)
 
     def test_coast_void_fades(self):
@@ -148,7 +147,6 @@ class DemBlendTest(unittest.TestCase):
             dm = self.make(d, nodata_west_of=float(lon[0, 256]))
             got = dm._bare12(key[1], key[2], np.zeros((demmod.TILE, demmod.TILE), np.float32))
             self.assertTrue(np.all(got[:, :250] == -50.0))
-            self.assertTrue(np.all(got[:, 270:] > 30000))
 
     def test_failure_keeps_ground_and_is_not_mirrored(self):
         with tempfile.TemporaryDirectory() as d:

@@ -49,13 +49,15 @@ is at least 0.05 km2). Do step 2 before pre-caching big areas, or they must be d
   follows no redirects, so each file is downloaded whole once (Fetcher.session + urllib, like gravity.py) into
   `<cache>/fabdem/V1-2/` and read locally after that (offline too). Four files cover the box: N43E039, N43E040,
   N44E039, N44E040.
-- `dem.Dem._bare12`: inside the box the z12 tiles are FABDEM instead of `dsmground.ground` (which leaves hilly ground
-  alone, i.e. most of Sochi), faded into the filtered model over 1.5 km inside the box's edge and 60 m around FABDEM
+- `dem.Dem._bare12`: inside the box the z12 tiles are the lower of FABDEM and `dsmground.ground` (the filter leaves
+  hilly ground alone, i.e. most of Sochi's trees; FABDEM kept big footprints: MoreMall stood 11 m over the street on
+  FABDEM alone, the player's screenshot 2026-11-09, flat on the min), faded into the filtered model over 1.5 km inside the box's edge and 60 m around FABDEM
   voids; deeper zooms are z12 upsampled as before. A failed read keeps the filtered model and is not mirrored.
   Outside the box nothing changes (the decoded mirror for box tiles lives in `g1fab12/`, the rest in `g1/`).
 - `BNE_FABDEM=0` turns it off. Licence: Non-Commercial Government Licence v2.0 (credits.py, CREDITS.md, SOURCES.md).
 - Checked 2026-11-09 on a 1 km W-E profile through MoreMall (43.6045 N, z15): mean |2nd difference| raw DSM 1.26,
-  filtered 1.13, FABDEM 0.80. FABDEM is not perfect: big footprints (MoreMall itself) partly keep their height.
+  filtered 1.13, FABDEM 0.80. FABDEM alone kept MoreMall as a mound (28.8 m against 17.5 around it at 43.6052 N); the min takes
+  it to 17.0.
 - Tests: `server/tests/test_fabdem.py`. Built-world caches rebuild by themselves (revisit.code_key hashes the code).
 
 ## Hand edits (`server/sochi_edits.json`)

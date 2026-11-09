@@ -48,7 +48,7 @@ FEATHER_M = 1500.0      # m inside the box's edge over which FABDEM fades into t
 COAST_FEATHER_M = 60.0  # m over which it fades where FABDEM has no data (the sea, a void)
 NODATA_LIMIT = -1000.0
 TILE = 512              # dem.py's tile size
-MIRROR_TAG = "fab12"     # dem.py's decoded-mirror folder suffix for tiles made from FABDEM (raise it when they change)
+MIRROR_TAG = "fab12min"     # dem.py's decoded-mirror folder suffix for tiles made from FABDEM (raise it when they change)
 MIN_BYTES = 1 << 20     # a whole file is at least this (an error page is not kept)
 TIMEOUT_S = 60.0
 

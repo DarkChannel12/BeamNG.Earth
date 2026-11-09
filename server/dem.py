@@ -966,10 +966,11 @@ class Dem:
         px = 40075016.686 * math.cos(math.radians(float(lat[TILE // 2, 0]))) / 2 ** GLOBAL_ZOOM / TILE
         w = w * hrdemmod.feather(ok, max(1, round(fabdemmod.COAST_FEATHER_M / px)))
         self._count("dem:fabdem12")
-        if (w >= 1.0).all():
-            return np.ascontiguousarray(h, np.float32)
+        # The lower of the two grounds: FABDEM takes the trees off the slopes the filter leaves alone, but kept big
+        # footprints (MoreMall stood 11 m over the street on FABDEM, 2026-11-09, flat on the filtered model), which
+        # the filter's 400 m opening takes out.
         g = self._ground12(x, y, a)
-        return (g + w * (h - g)).astype(np.float32)
+        return (g + w * (np.minimum(h, g) - g)).astype(np.float32)
 
     def _deepest_lidar(self, z, x, y):
         """The deepest zoom between GLOBAL_ZOOM + 1 and z - 1 at which Mapterhorn has the ancestor of tile (z, x, y)
