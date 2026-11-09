@@ -221,6 +221,11 @@ POLICIES = {
     "canelevation-dem.s3.ca-central-1.amazonaws.com": HostPolicy(rate=20.0, burst=40.0, max_conc=6, daily_budget=None,
                                                                  allow_prefetch=True, offline_ok=True, miss_ttl=None,
                                                                  binary=True, timeout=30.0, optional=True),
+    # Greater Sochi's bare-earth terrain (fabdem.py): four ~11 MB files, each downloaded whole once and kept; optional
+    # (Mapterhorn's filtered ground stands in)
+    "huggingface.co": HostPolicy(rate=1.0, burst=4.0, max_conc=2, daily_budget=200, daily_hard=400,
+                                 allow_prefetch=True, offline_ok=True, miss_ttl=None, binary=True, timeout=60.0,
+                                 max_attempts=2, base_delay=2.0, optional=True),
     # OurAirports' nightly CSV dump on GitHub Pages (airports.py): two files (~3 MB gzipped) once a week,
     # one request at a time, a hard cap well above a week's need; the copy on disk serves offline
     "davidmegginson.github.io": HostPolicy(rate=0.2, burst=2.0, max_conc=1, daily_budget=20, daily_hard=40,
@@ -326,6 +331,7 @@ ROLES = {
     "s3.amazonaws.com": "terrain heights (backup source); only matters while the main one is down too",
     "copernicus-dem-30m.s3.amazonaws.com": "terrain heights near the poles",
     "canelevation-dem.s3.ca-central-1.amazonaws.com": "Canada's lidar ground under the distant terrain; as before meanwhile",
+    "huggingface.co": "Sochi's bare-earth terrain (FABDEM); the filtered surface model meanwhile",
     "nrs.objectstore.gov.bc.ca": "British Columbia's detailed aerial photos (and its lidar, if on); coarser photos meanwhile",
     "stac.overturemaps.org": "the map data's file list; the copy that comes with the app is used meanwhile",
     "overturemaps-us-west-2.s3.us-west-2.amazonaws.com":

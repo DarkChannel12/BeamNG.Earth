@@ -22,6 +22,7 @@ after the host's miss_ttl (Mapterhorn 90 days: it adds lidar areas; AWS never).
 """
 from runtimeprofiler import step as profile_step
 import contextlib
+import http.client
 import io
 import json
 import logging
@@ -36,7 +37,9 @@ import numpy as np
 from PIL import Image
 
 import cache as cachemod
+import cog as cogmod
 import dsmground
+import fabdem as fabdemmod
 import fast
 import hrdem as hrdemmod
 import lidarbc as lidarbcmod
@@ -255,6 +258,8 @@ class Dem:
         self.lidarbc_sparse = (lidarbcmod.LidarBC(os.path.join(cache_dir, "lidarbc-sparse"), self.fetcher,
                                                   block=BIAS_BLOCK) if LIDARBC else None)
         self.hrdem_served = set()       # tile keys with HRDEM heights in them (the data credits)
+        # Greater Sochi's bare earth (fabdem.py): its z12 tiles in place of the ground filter, inside its box only
+        self.fabdem = fabdemmod.Fabdem(os.path.join(cache_dir, "fabdem"), self.fetcher) if fabdemmod.ON else None
 
 
     def clear_memory(self):
@@ -648,8 +653,21 @@ class Dem:
     # --- the decoded mirror (MIRROR_MB) ----------------------------------------------------------
     def _mirror_path(self, key):
         z, x, y = key
-        return os.path.join(self.cache_dir, "decoded", f"v{DECODED_VERSION}", f"g{int(self.ground_filter)}", str(z),
+        # (tiles made from FABDEM, fabdem_at: a folder of their own, so the Sochi box's tiles mirrored before it, or with
+        # it off, are not read back; the rest of the world keeps its mirror)
+        sub = (f"g{int(self.ground_filter)}{fabdemmod.MIRROR_TAG}" if self.ground_filter and self.fabdem_at(key)
+               else f"g{int(self.ground_filter)}")
+        return os.path.join(self.cache_dir, "decoded", f"v{DECODED_VERSION}", sub, str(z),
                             str(x), f"{y}{'.f32z' if MIRROR_ZSTD else '.npy'}")
+
+    def fabdem_at(self, key):
+        """Whether tile key is made from FABDEM (fabdem.py): a z12 tile touching its box, or a deeper one under such a
+        tile (upsampled from it). Also the data credits' test."""
+        z, x, y = key
+        if self.fabdem is None or z < GLOBAL_ZOOM:
+            return False
+        d = z - GLOBAL_ZOOM
+        return self.fabdem.covers(GLOBAL_ZOOM, x >> d, y >> d)
 
     def _mirror_get(self, key, readback=False):
         """A tile from the decoded mirror (a read-only view of its memory map), or None. readback: _mirror_put's
@@ -835,7 +853,7 @@ class Dem:
             if self.ground_filter:
                 if z == GLOBAL_ZOOM:
                     lidar = self._lidar(x, y)
-                    a = fill_holes(a, hole_px(z, y)) if lidar else self._ground12(x, y, a)
+                    a = fill_holes(a, hole_px(z, y)) if lidar else self._bare12(x, y, a)
                 elif z > GLOBAL_ZOOM:
                     a = fill_holes(a, hole_px(z, y))        # lidar: no ground under buildings
                 else:
@@ -925,6 +943,33 @@ class Dem:
         g = dsmground.ground(big, px)
         self._count("dem:ground12")
         return np.ascontiguousarray(g[m:m + TILE, m:m + TILE])
+
+    def _bare12(self, x, y, a):
+        """z12 tile (x, y)'s ground: FABDEM inside its box (fabdem.py), faded into the filtered surface model
+        (_ground12) over fabdem.FEATHER_M inside the box's edge and fabdem.COAST_FEATHER_M around its voids; elsewhere
+        the filtered surface model alone. A failed FABDEM read keeps the filtered model (not mirrored: asked again)."""
+        key = (GLOBAL_ZOOM, x, y)
+        if self.fabdem is None or not self.fabdem.covers(*key):
+            return self._ground12(x, y, a)
+        try:
+            got = self.fabdem.tile(*key)
+        except (netfetch.FetchError, OSError, http.client.HTTPException, cogmod.CogError) as e:
+            self._count("fabdem:error")
+            log.warning("fabdem %s: %s (the filtered surface model meanwhile)", key, e)
+            self._partial()
+            return self._ground12(x, y, a)
+        if got is None:
+            return self._ground12(x, y, a)
+        h, ok = got
+        lat, lon = fabdemmod.tile_lat_lon(*key)
+        w = fabdemmod.edge_weight(lat, lon, self.fabdem.bounds)
+        px = 40075016.686 * math.cos(math.radians(float(lat[TILE // 2, 0]))) / 2 ** GLOBAL_ZOOM / TILE
+        w = w * hrdemmod.feather(ok, max(1, round(fabdemmod.COAST_FEATHER_M / px)))
+        self._count("dem:fabdem12")
+        if (w >= 1.0).all():
+            return np.ascontiguousarray(h, np.float32)
+        g = self._ground12(x, y, a)
+        return (g + w * (h - g)).astype(np.float32)
 
     def _deepest_lidar(self, z, x, y):
         """The deepest zoom between GLOBAL_ZOOM + 1 and z - 1 at which Mapterhorn has the ancestor of tile (z, x, y)

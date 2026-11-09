@@ -18,7 +18,7 @@ of the world behaves exactly as before.
 
 1. **Imagery** (done): opt-in keyed regional sources for the Sochi box.
 2. **Elevation**: FABDEM (bare earth, 30 m) instead of Copernicus GLO-30 (a DSM: trees and roofs) inside the Sochi
-   box, then tune road grading on steep slopes. (in progress)
+   box (done, see below), then tune road grading on steep slopes (next).
 3. **Roads**: case by case from the player's screenshots / coordinates; separate mod-code fixes from OSM edits (OSM
    edits must not be traced from Yandex or Google imagery).
 4. **Saved areas**: pre-cache the area with "Build the world too" so nothing is built while driving.
@@ -40,6 +40,22 @@ is at least 0.05 km2). Do step 2 before pre-caching big areas, or they must be d
   and its photos stay in the ordinary cache. MapTiler is capped at 3,000 requests a day (free plan quota).
 - Do not add Yandex or Google imagery: their terms forbid it, even for personal use.
 - Tests: `server/tests/test_imagery_keyed.py`. Checked live at the sea port (43.5800, 39.7195).
+
+## Step 2: elevation (FABDEM done; road grading next)
+
+- `server/fabdem.py`: FABDEM v1.2 from Fondazione LINKS' COG mirror (`huggingface.co/buckets/links-ads/fabdem`, one
+  ~11 MB file per 1 x 1 degree, pixel values as Bristol's). The bucket redirects to a signed CDN address and netfetch
+  follows no redirects, so each file is downloaded whole once (Fetcher.session + urllib, like gravity.py) into
+  `<cache>/fabdem/V1-2/` and read locally after that (offline too). Four files cover the box: N43E039, N43E040,
+  N44E039, N44E040.
+- `dem.Dem._bare12`: inside the box the z12 tiles are FABDEM instead of `dsmground.ground` (which leaves hilly ground
+  alone, i.e. most of Sochi), faded into the filtered model over 1.5 km inside the box's edge and 60 m around FABDEM
+  voids; deeper zooms are z12 upsampled as before. A failed read keeps the filtered model and is not mirrored.
+  Outside the box nothing changes (the decoded mirror for box tiles lives in `g1fab12/`, the rest in `g1/`).
+- `BNE_FABDEM=0` turns it off. Licence: Non-Commercial Government Licence v2.0 (credits.py, CREDITS.md, SOURCES.md).
+- Checked 2026-11-09 on a 1 km W-E profile through MoreMall (43.6045 N, z15): mean |2nd difference| raw DSM 1.26,
+  filtered 1.13, FABDEM 0.80. FABDEM is not perfect: big footprints (MoreMall itself) partly keep their height.
+- Tests: `server/tests/test_fabdem.py`. Built-world caches rebuild by themselves (revisit.code_key hashes the code).
 
 ## Tests
 
