@@ -909,6 +909,8 @@ def paint_square(rgb, frame, x0, y0, size, surface, widths=None, simple=False):
         rgb = photo_golf(rgb, frame, x0, y0, size, feats)
         rgb = photo_lots(rgb, frame, x0, y0, size, feats)
         rgb = photo_pads(rgb, frame, x0, y0, size, _square_pads(frame, x0, y0, size, surface))     # (under the roads)
+        import sochiedits       # (the Sochi hand edits' areas, under the roads too)
+        rgb = sochiedits.photo_areas(rgb, frame, x0, y0, size)
     if not roads:
         return rgb
     return photo_roads(rgb, frame, x0, y0, size, roads, surface.urban, widths, simple=simple)

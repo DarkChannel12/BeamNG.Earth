@@ -21,6 +21,7 @@ of the world behaves exactly as before.
    box (done, see below), then tune road grading on steep slopes (next).
 3. **Roads**: case by case from the player's screenshots / coordinates; separate mod-code fixes from OSM edits (OSM
    edits must not be traced from Yandex or Google imagery).
+   Hand fixes go into `server/sochi_edits.json` (see "Hand edits" below).
 4. **Saved areas**: pre-cache the area with "Build the world too" so nothing is built while driving.
 
 First test area: about 1 x 1 km around MoreMall / Gagarina street / Tsvetnoy bulvar in central Sochi (a saved area
@@ -56,6 +57,23 @@ is at least 0.05 km2). Do step 2 before pre-caching big areas, or they must be d
 - Checked 2026-11-09 on a 1 km W-E profile through MoreMall (43.6045 N, z15): mean |2nd difference| raw DSM 1.26,
   filtered 1.13, FABDEM 0.80. FABDEM is not perfect: big footprints (MoreMall itself) partly keep their height.
 - Tests: `server/tests/test_fabdem.py`. Built-world caches rebuild by themselves (revisit.code_key hashes the code).
+
+## Hand edits (`server/sochi_edits.json`)
+
+The world is rebuilt from the map data at every load, so World Editor changes do not stay. Fixes go into
+`server/sochi_edits.json` instead (`server/sochiedits.py` has the full format); the server applies them inside the
+Sochi box only, every time it builds there.
+
+- Roads, by `"name"` (as the status bar shows it) or `"way"` (OSM way id), optionally `"near": [lat, lon, m]`:
+  `width`, `lanes`, `surface` (asphalt / concrete / cobble / gravel / dirt), `sidewalks` (both / left / right /
+  none), `sidewalk_width`, `drop`.
+- Areas: `{"ground": "cobble", "polygon": [[lat, lon], ...]}` (asphalt / cobble / grass / lawn / dirt / gravel /
+  sand): the tyres' ground model and a flat tint on the ground photo (no tiled texture: the ground's look is the photo).
+- Workflow: the player shows the place (screenshot + the coordinates over the minimap / the street name), the edit is
+  written, the server is restarted (`run_server.bat`), the place reloads with it. The file's fingerprint is in the
+  built-world cache keys, so the old build is not reused. A broken file is logged and ignored.
+- Every edit carries a `"note"` with what was wrong and how it was checked (no Yandex / Google imagery as a source).
+- Tests: `server/tests/test_sochiedits.py`.
 
 ## Tests
 

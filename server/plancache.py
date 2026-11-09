@@ -69,7 +69,9 @@ def plans_format():
     """The plans' revisit key format: PLANS_FORMAT and the road facts' (roads.FACTS_FORMAT: the plans are made from
     them), "<plans>.<facts>"."""
     import roads
-    return f"{PLANS_FORMAT}.{roads.FACTS_FORMAT}"
+    import sochiedits           # (the Sochi edits change the specs the plans are made from)
+    fp = sochiedits.fingerprint()
+    return f"{PLANS_FORMAT}.{roads.FACTS_FORMAT}" + (f".e{fp}" if fp else "")
 
 
 FRAMES = "r10"          # the plans' frames: their planning regions' (geotiles.PLAN_Z), not an anchor's

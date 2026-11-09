@@ -421,7 +421,9 @@ def _facts_key(feats, kind, extra):
     if cid is None or not revisit.ON or revisit.CACHE_DIR is None:
         return None
     # (by FACTS_FORMAT, not the code: kept across updates, the user, 2026-11-02; cid carries the map data's versions)
-    return revisit.format_key("cellfacts", FACTS_FORMAT, kind, cid, extra)
+    import sochiedits           # (the facts are made from the specs, which the Sochi edits change)
+    fp = sochiedits.fingerprint()
+    return revisit.format_key("cellfacts", FACTS_FORMAT, kind, cid, (extra, fp) if fp else extra)
 
 
 def _facts_load(feats, kind, extra):
@@ -2006,7 +2008,8 @@ def road_specs(feats, urban_fn=None, widths=None, left_hand=False):
                             _FACTS_MEM.popitem(last=False)
         if keep:
             got = memo.setdefault(k, got)
-    return list(got)
+    import sochiedits           # (the hand edits of Greater Sochi: after the memo, so they are never stored in it)
+    return sochiedits.apply_roads(feats, list(got))
 
 
 # Lane tapers (the user, 2026-10-31: "the bridge geometry as lanes merge and split is rough"; bridgewidth.py: 54 of
